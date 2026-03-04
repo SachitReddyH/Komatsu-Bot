@@ -51,6 +51,36 @@ class WhatsAppNotifier:
 
     # ------------------------------------------------------------------
 
+    def send_rba_alert(self, target: dict, listing: dict) -> bool:
+        """
+        Send a WhatsApp alert for a new RB Auction lot.
+        Returns True if at least one message was delivered successfully.
+        """
+        if not self.enabled:
+            return False
+
+        valid = [
+            r for r in self.recipients
+            if r.get("phone", "").strip() and r.get("apikey", "").strip()
+        ]
+        if not valid:
+            logger.warning("WhatsApp enabled but no valid recipients configured.")
+            return False
+
+        message = _compose_rba_message(target, listing)
+        any_success = False
+
+        for i, recipient in enumerate(valid):
+            phone  = recipient["phone"].strip()
+            apikey = recipient["apikey"].strip()
+            ok = self._send_one(phone, apikey, message)
+            if ok:
+                any_success = True
+            if i < len(valid) - 1:
+                time.sleep(1)
+
+        return any_success
+
     def send_alert(self, target: dict, listing: dict) -> bool:
         """
         Send a WhatsApp alert to every configured recipient.
@@ -175,5 +205,60 @@ def _compose_message(target: dict, listing: dict) -> str:
         lines += ["", f"🔗 {url}"]
 
     lines += ["", "_YANTRA LIVE Watcher Bot_"]
+
+    return "\n".join(lines)
+
+
+def _compose_rba_message(target: dict, listing: dict) -> str:
+    """Build an emoji-rich WhatsApp message for an RBA auction lot alert."""
+    title       = listing.get("title", "N/A")
+    current_bid = listing.get("current_bid", "N/A")
+    lot_number  = listing.get("lot_number", "N/A")
+    year        = listing.get("year", "")
+    hours       = listing.get("hours", "")
+    location    = listing.get("location", "N/A")
+    auction     = listing.get("auction_event", "N/A")
+    url         = listing.get("detail_url", "")
+    image_url   = listing.get("image_url", "")
+
+    # Watch criteria
+    criteria_parts: list[str] = []
+    y_min = target.get("year_min")
+    y_max = target.get("year_max")
+    p_max = target.get("price_max")
+
+    if y_min and y_max:
+        criteria_parts.append(f"Year {y_min}–{y_max}")
+    elif y_min:
+        criteria_parts.append(f"Year ≥{y_min}")
+    elif y_max:
+        criteria_parts.append(f"Year ≤{y_max}")
+    if p_max:
+        criteria_parts.append(f"Max Bid ≤${p_max:,}")
+
+    criteria_str = " | ".join(criteria_parts) if criteria_parts else "All listings"
+
+    lines = [
+        "🔨 *NEW RB AUCTION LOT FOUND!*",
+        "",
+        f"📌 *{title}*",
+        f"💰 Current Bid: *{current_bid}*",
+        f"🎫 Lot: #{lot_number}",
+    ]
+    if year:
+        lines.append(f"📅 Year: {year}")
+    if hours:
+        lines.append(f"⏱️ Hours: {hours}")
+    lines += [
+        f"📍 {location}",
+        f"🏛️ Auction: {auction}",
+        "",
+        f"🎯 Watching: {target.get('model', '')} | {criteria_str}",
+    ]
+    if url:
+        lines += ["", f"🔗 Bid Now: {url}"]
+    if image_url:
+        lines += [f"🖼️ Image: {image_url}"]
+    lines += ["", "_YANTRA LIVE RBA Watcher Bot_"]
 
     return "\n".join(lines)

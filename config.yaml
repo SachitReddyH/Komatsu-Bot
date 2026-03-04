@@ -12,6 +12,12 @@ watcher:
   base_search_url: https://iframe.tradeearthmovers.com.au/externalsearch/code-dd74cd3a-7423-41a3-8227-e1a92b01925a
   base_detail_url: https://iframe.tradeearthmovers.com.au
   komatsu_page: https://www.komatsu.com.au/equipment/used-equipment
+rba_watcher:
+  enabled: true
+  interval_minutes: 60
+  # Scrapes rbauction.com.au for Bidding Open auction events.
+  # Uses the same 'targets' list above — model is mandatory, year/price optional.
+  # Set enabled: false to pause without removing targets.
 notifications:
   email:
     enabled: true

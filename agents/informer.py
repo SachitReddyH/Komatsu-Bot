@@ -76,6 +76,66 @@ class InformerAgent:
 
     # ------------------------------------------------------------------
 
+    def notify_rba(self, target: dict, listing: dict):
+        """
+        Dispatch a notification for a new RB Auction lot.
+        Always prints to terminal; sends email and/or WhatsApp if configured.
+        """
+        self._print_rba_alert(target, listing)
+
+        if self._email:
+            try:
+                self._email.send_rba_alert(target, listing)
+                console.print("[green]✉️  RBA Email alert sent![/green]")
+            except Exception as exc:
+                logger.error("RBA Email send failed: %s", exc)
+                console.print(f"[red]✉️  RBA Email failed: {exc}[/red]")
+
+        if self._whatsapp:
+            try:
+                ok = self._whatsapp.send_rba_alert(target, listing)
+                if ok:
+                    console.print("[green]💬  RBA WhatsApp alert sent![/green]")
+                else:
+                    console.print("[yellow]💬  RBA WhatsApp: delivery failed (check logs)[/yellow]")
+            except Exception as exc:
+                logger.error("RBA WhatsApp send failed: %s", exc)
+                console.print(f"[red]💬  RBA WhatsApp failed: {exc}[/red]")
+
+    # ------------------------------------------------------------------
+
+    def _print_rba_alert(self, target: dict, listing: dict):
+        """Rich terminal output for an RBA auction lot alert."""
+        console.print()
+        console.print(
+            Panel.fit(
+                f"[bold white]🔨  NEW AUCTION LOT FOUND![/bold white]\n"
+                f"[bold yellow]{listing['title']}[/bold yellow]\n"
+                f"[dim]via RB Auction  •  {listing.get('auction_event', '')}[/dim]",
+                border_style="bright_magenta",
+                title="[bold magenta]RBA Watcher – Auction Alert[/bold magenta]",
+            )
+        )
+
+        t = Table(show_header=False, box=None, padding=(0, 2))
+        t.add_column(style="dim", width=16)
+        t.add_column(style="bold")
+
+        t.add_row("Current Bid",  f"[green]{listing.get('current_bid', 'N/A')}[/green]")
+        t.add_row("Lot #",        listing.get("lot_number", "N/A"))
+        t.add_row("Year",         listing.get("year", "N/A"))
+        t.add_row("Hours",        listing.get("hours", "N/A"))
+        t.add_row("Location",     listing.get("location", "N/A"))
+        t.add_row("Auction",      listing.get("auction_event", "N/A"))
+        t.add_row("URL",          f"[blue underline]{listing.get('detail_url', '')}[/blue underline]")
+        if listing.get("image_url"):
+            t.add_row("Image",    f"[blue underline]{listing['image_url']}[/blue underline]")
+
+        console.print(t)
+        console.print()
+
+    # ------------------------------------------------------------------
+
     def _print_alert(self, target: dict, listing: dict):
         # Top-level panel
         console.print()

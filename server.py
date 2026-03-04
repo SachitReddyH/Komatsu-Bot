@@ -39,6 +39,7 @@ load_dotenv()
 sys.path.insert(0, str(Path(__file__).parent))
 from agents.informer import InformerAgent
 from agents.watcher import WatcherAgent
+from agents.rba_watcher import RBAWatcherAgent
 from bot.enquiry import fill_enquiry_form
 from db.database import Database
 
@@ -74,7 +75,7 @@ app.add_middleware(
 )
 
 # --------------------------------------------------------------------------
-# Shared state
+# Shared state  –  Komatsu (tradeearthmovers)
 # --------------------------------------------------------------------------
 
 _config: dict = {}
@@ -84,6 +85,16 @@ _scheduler_running = False
 _last_run: Optional[str] = None
 _last_new_count: int = 0
 _check_in_progress = False
+
+# --------------------------------------------------------------------------
+# Shared state  –  RB Auction
+# --------------------------------------------------------------------------
+
+_rba_scheduler = None
+_rba_scheduler_running = False
+_rba_last_run: Optional[str] = None
+_rba_last_new_count: int = 0
+_rba_check_in_progress = False
 
 
 def get_config() -> dict:
@@ -104,7 +115,7 @@ def get_db() -> Database:
 
 
 # --------------------------------------------------------------------------
-# Watch cycle
+# Komatsu watch cycle
 # --------------------------------------------------------------------------
 
 def _run_check_sync() -> list:
@@ -132,9 +143,51 @@ def start_scheduler():
     _scheduler.add_job(_run_check_sync, "interval", minutes=interval, id="watch_job")
     _scheduler.start()
     _scheduler_running = True
-    logger.info("Scheduler started – every %d min", interval)
-    # Run once immediately (in background so server starts fast)
+    logger.info("Komatsu scheduler started – every %d min", interval)
+    # Run once immediately
     threading.Thread(target=_run_check_sync, daemon=True).start()
+
+
+# --------------------------------------------------------------------------
+# RBA watch cycle
+# --------------------------------------------------------------------------
+
+def _run_rba_check_sync() -> list:
+    global _rba_last_run, _rba_last_new_count, _rba_check_in_progress
+    _rba_check_in_progress = True
+    try:
+        config = get_config()
+        db = get_db()
+        informer = InformerAgent(config)
+        watcher = RBAWatcherAgent(config, db, informer)
+        findings = watcher.run()
+        _rba_last_run = datetime.now().isoformat(timespec="seconds")
+        _rba_last_new_count = len(findings)
+        return findings
+    finally:
+        _rba_check_in_progress = False
+
+
+def start_rba_scheduler():
+    global _rba_scheduler, _rba_scheduler_running
+    from apscheduler.schedulers.background import BackgroundScheduler
+
+    config = get_config()
+    rba_cfg = config.get("rba_watcher", {})
+    if not rba_cfg.get("enabled", True):
+        logger.info("RBA Watcher disabled in config.yaml – skipping")
+        return
+
+    interval = int(rba_cfg.get("interval_minutes", 60))
+    _rba_scheduler = BackgroundScheduler(timezone="UTC")
+    _rba_scheduler.add_job(
+        _run_rba_check_sync, "interval", minutes=interval, id="rba_watch_job"
+    )
+    _rba_scheduler.start()
+    _rba_scheduler_running = True
+    logger.info("RBA scheduler started – every %d min", interval)
+    # Run once immediately
+    threading.Thread(target=_run_rba_check_sync, daemon=True).start()
 
 
 # --------------------------------------------------------------------------
@@ -159,7 +212,7 @@ class TargetRequest(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# API routes
+# API routes  –  Komatsu
 # --------------------------------------------------------------------------
 
 @app.get("/api/status")
@@ -171,7 +224,6 @@ def api_status():
     targets = config.get("targets", [])
     interval = int(config.get("watcher", {}).get("interval_minutes", 60))
 
-    # Count new listings in the last 24 hours
     from datetime import timedelta
     cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
     new_24h = sum(1 for s in seen if s.get("first_seen", "") >= cutoff)
@@ -229,7 +281,6 @@ async def api_enquiry(req: EnquiryRequest):
     name = (config.get("enquiry") or {}).get("company_name", "YANTRA LIVE")
     listing = record["data"]
 
-    # Playwright is async – run in a separate thread to avoid blocking
     loop = asyncio.get_event_loop()
     try:
         result = await loop.run_in_executor(
@@ -256,6 +307,75 @@ async def api_enquiry(req: EnquiryRequest):
 @app.get("/api/config")
 def api_config():
     return get_config()
+
+
+# --------------------------------------------------------------------------
+# API routes  –  RB Auction
+# --------------------------------------------------------------------------
+
+@app.get("/api/rba/status")
+def api_rba_status():
+    config  = get_config()
+    db      = get_db()
+    seen    = db.get_all_seen_rba()
+    history = db.get_rba_recent_runs(10)
+    rba_cfg = config.get("rba_watcher", {})
+
+    from datetime import timedelta
+    cutoff  = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+    new_24h = sum(1 for s in seen if s.get("first_seen", "") >= cutoff)
+
+    next_run = None
+    if _rba_scheduler:
+        job = _rba_scheduler.get_job("rba_watch_job")
+        if job and job.next_run_time:
+            next_run = job.next_run_time.isoformat()
+
+    return {
+        "enabled":           rba_cfg.get("enabled", True),
+        "scheduler_running": _rba_scheduler_running,
+        "check_in_progress": _rba_check_in_progress,
+        "last_run":          _rba_last_run,
+        "last_new_count":    _rba_last_new_count,
+        "next_run":          next_run,
+        "interval_minutes":  int(rba_cfg.get("interval_minutes", 60)),
+        "total_lots":        len(seen),
+        "new_24h":           new_24h,
+        "total_checks":      len(history),
+        "recent_runs":       history[:5],
+    }
+
+
+@app.get("/api/rba/listings")
+def api_rba_listings(limit: int = 200):
+    db   = get_db()
+    seen = db.get_all_seen_rba()
+    return {"listings": seen[:limit], "total": len(seen)}
+
+
+@app.get("/api/rba/history")
+def api_rba_history(limit: int = 20):
+    db = get_db()
+    return {"runs": db.get_rba_recent_runs(limit)}
+
+
+@app.post("/api/rba/check")
+def api_rba_check(background_tasks: BackgroundTasks):
+    if _rba_check_in_progress:
+        return {"message": "RBA check already in progress", "started": False}
+    background_tasks.add_task(_run_rba_check_sync)
+    return {"message": "RBA check started", "started": True}
+
+
+@app.post("/api/rba/toggle")
+def api_rba_toggle():
+    """Enable or disable the RBA watcher in config.yaml."""
+    cfg = get_config()
+    rba_cfg = cfg.get("rba_watcher", {})
+    rba_cfg["enabled"] = not rba_cfg.get("enabled", True)
+    cfg["rba_watcher"] = rba_cfg
+    save_config(cfg)
+    return {"enabled": rba_cfg["enabled"]}
 
 
 # --------------------------------------------------------------------------
@@ -291,16 +411,22 @@ def api_add_target(req: TargetRequest):
     save_config(cfg)
     logger.info("Target added: %s", new_target)
 
-    # Seed any currently-available listings into the DB in the background.
-    # They appear in the UI immediately but will NOT trigger alert emails –
-    # only listings that appear AFTER this point will fire notifications.
+    # Seed existing listings from BOTH sources in background
     def _seed():
         try:
             db = get_db()
             informer = InformerAgent(get_config())
-            watcher = WatcherAgent(get_config(), db, informer)
-            count = watcher.seed_target(new_target)
-            logger.info("Seed finished for %s – %d listing(s)", model_name, count)
+
+            # Seed Komatsu listings
+            komatsu_watcher = WatcherAgent(get_config(), db, informer)
+            count_k = komatsu_watcher.seed_target(new_target)
+            logger.info("Komatsu seed for %s – %d listing(s)", model_name, count_k)
+
+            # Seed RBA lots
+            rba_watcher = RBAWatcherAgent(get_config(), db, informer)
+            count_r = rba_watcher.seed_target(new_target)
+            logger.info("RBA seed for %s – %d lot(s)", model_name, count_r)
+
         except Exception as exc:
             logger.exception("Background seed failed for %s: %s", model_name, exc)
 
@@ -318,11 +444,17 @@ def api_delete_target(index: int):
     cfg["targets"] = targets
     save_config(cfg)
 
-    # Remove all listings for this target from the DB so they vanish from the UI.
     db = get_db()
-    deleted_count = db.delete_by_model(removed["model"])
-    logger.info("Target removed: %s  |  %d listing(s) purged from DB", removed, deleted_count)
-    return {"success": True, "targets": targets, "removed": removed, "listings_deleted": deleted_count}
+    deleted_k = db.delete_by_model(removed["model"])
+    deleted_r = db.delete_rba_by_model(removed["model"])
+    logger.info(
+        "Target removed: %s  |  Komatsu: %d  |  RBA: %d listings purged",
+        removed, deleted_k, deleted_r,
+    )
+    return {
+        "success": True, "targets": targets, "removed": removed,
+        "listings_deleted": deleted_k, "rba_lots_deleted": deleted_r,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -350,13 +482,14 @@ def root():
 if __name__ == "__main__":
     import uvicorn
 
-    # Start APScheduler in background before uvicorn takes over
+    # Start both schedulers in background before uvicorn takes over
     threading.Thread(target=start_scheduler, daemon=True).start()
+    threading.Thread(target=start_rba_scheduler, daemon=True).start()
 
-    print("\n" + "=" * 55)
-    print("  🤖  KOMATSU WATCHER BOT  –  Web Dashboard")
+    print("\n" + "=" * 60)
+    print("  🤖  KOMATSU + RBA WATCHER BOT  –  Web Dashboard")
     print("  Open: http://localhost:8000")
     print("  API docs: http://localhost:8000/api/docs")
-    print("=" * 55 + "\n")
+    print("=" * 60 + "\n")
 
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False, log_level="warning")

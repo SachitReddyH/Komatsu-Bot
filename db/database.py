@@ -43,6 +43,23 @@ class Database:
                     total_found  INTEGER DEFAULT 0,
                     new_found    INTEGER DEFAULT 0
                 );
+
+                -- RB Auction tables ----------------------------------------
+                CREATE TABLE IF NOT EXISTS rba_seen_listings (
+                    id          TEXT PRIMARY KEY,
+                    data        TEXT    NOT NULL,
+                    first_seen  TEXT    DEFAULT (datetime('now')),
+                    last_seen   TEXT    DEFAULT (datetime('now')),
+                    notified    INTEGER DEFAULT 0
+                );
+
+                CREATE TABLE IF NOT EXISTS rba_watch_log (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp    TEXT    DEFAULT (datetime('now')),
+                    models       TEXT,
+                    total_found  INTEGER DEFAULT 0,
+                    new_found    INTEGER DEFAULT 0
+                );
             """)
 
     # ---- Connection helper -----------------------------------------------
@@ -142,5 +159,97 @@ class Database:
         with self._conn() as conn:
             rows = conn.execute(
                 "SELECT * FROM watch_log ORDER BY timestamp DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ---- RBA Listing helpers -----------------------------------------------
+
+    def is_seen_rba(self, lot_id: str) -> bool:
+        """Return True if this RBA lot ID has already been recorded."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT id FROM rba_seen_listings WHERE id = ?", (lot_id,)
+            ).fetchone()
+        return row is not None
+
+    def mark_seen_rba(self, lot_id: str, data: dict, notified: bool = True):
+        """Insert or update an RBA lot record."""
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO rba_seen_listings (id, data, last_seen, notified)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    last_seen = excluded.last_seen,
+                    notified  = excluded.notified
+                """,
+                (
+                    lot_id,
+                    json.dumps(data, ensure_ascii=False),
+                    datetime.now().isoformat(timespec="seconds"),
+                    int(notified),
+                ),
+            )
+
+    def get_all_seen_rba(self) -> list[dict]:
+        """Return all seen RBA lots, newest first."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT id, data, first_seen, last_seen, notified "
+                "FROM rba_seen_listings ORDER BY first_seen DESC"
+            ).fetchall()
+        return [
+            {
+                "id":         r["id"],
+                "data":       json.loads(r["data"]),
+                "first_seen": r["first_seen"],
+                "last_seen":  r["last_seen"],
+                "notified":   bool(r["notified"]),
+            }
+            for r in rows
+        ]
+
+    def get_rba_listing(self, lot_id: str) -> Optional[dict]:
+        """Fetch a single RBA lot record by ID."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT id, data, first_seen, last_seen "
+                "FROM rba_seen_listings WHERE id = ?",
+                (lot_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "id":         row["id"],
+            "data":       json.loads(row["data"]),
+            "first_seen": row["first_seen"],
+            "last_seen":  row["last_seen"],
+        }
+
+    def delete_rba_by_model(self, model_name: str) -> int:
+        """Delete all RBA lots whose title contains the model name."""
+        with self._conn() as conn:
+            result = conn.execute(
+                "DELETE FROM rba_seen_listings "
+                "WHERE UPPER(json_extract(data, '$.title')) LIKE UPPER(?)",
+                (f"%{model_name}%",),
+            )
+            return result.rowcount
+
+    # ---- RBA Watch log -----------------------------------------------------
+
+    def log_rba_run(self, models: list[str], total_found: int, new_found: int):
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO rba_watch_log (models, total_found, new_found) "
+                "VALUES (?, ?, ?)",
+                (", ".join(models), total_found, new_found),
+            )
+
+    def get_rba_recent_runs(self, limit: int = 10) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM rba_watch_log ORDER BY timestamp DESC LIMIT ?",
+                (limit,),
             ).fetchall()
         return [dict(r) for r in rows]

@@ -3,11 +3,240 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Komatsu Watcher · YANTRA LIVE</title>
+  <title>Komatsu + RBA Watcher · YANTRA LIVE</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    /* ── Tab bar ──────────────────────────────────────────────────────── */
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      padding: 12px 24px 0;
+      background: var(--surface, #16181d);
+      border-bottom: 1px solid var(--border, rgba(255,255,255,.07));
+    }
+    .tab-btn {
+      padding: 8px 20px;
+      border: none;
+      border-radius: 6px 6px 0 0;
+      background: transparent;
+      color: var(--text-muted, #7d8590);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      transition: background .15s, color .15s;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .tab-btn:hover { color: #e6edf3; background: rgba(255,255,255,.05); }
+    .tab-btn.active {
+      color: #fff;
+      background: rgba(255,255,255,.06);
+      border-bottom-color: #4a9eff;
+    }
+    .tab-btn.active.rba { border-bottom-color: #b57bee; }
+    .tab-badge {
+      background: rgba(255,255,255,.1);
+      border-radius: 10px;
+      padding: 1px 7px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .tab-btn.active .tab-badge { background: #4a9eff; color: #fff; }
+    .tab-btn.active.rba .tab-badge { background: #b57bee; color: #fff; }
+
+    /* ── RBA Stats strip ──────────────────────────────────────────────── */
+    .rba-stats-strip {
+      display: none;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      padding: 16px 24px;
+      background: var(--surface, #16181d);
+      border-bottom: 1px solid var(--border, rgba(255,255,255,.07));
+    }
+    .rba-stats-strip.visible { display: grid; }
+    .rba-stat-icon--purple { background: rgba(149,94,232,.15) !important; color: #b57bee !important; }
+    .rba-stat-icon--pink   { background: rgba(232,94,148,.15) !important; color: #e85eb0 !important; }
+
+    /* ── RBA Main section ─────────────────────────────────────────────── */
+    #rba-section { display: none; }
+    #rba-section.visible { display: block; }
+    #komatsu-section.hidden { display: none; }
+
+    /* ── RBA "Check" status pill in header ───────────────────────────── */
+    .rba-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(181,123,238,.12);
+      border: 1px solid rgba(181,123,238,.25);
+      font-size: 12px;
+      color: #c9a5f5;
+      font-weight: 500;
+    }
+    .rba-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #b57bee;
+      animation: pulse 2s infinite;
+    }
+
+    /* ── Lot card (RBA auction) ───────────────────────────────────────── */
+    .lot-card {
+      background: var(--card-bg, #1c1f26);
+      border: 1px solid var(--border, rgba(255,255,255,.07));
+      border-radius: 10px;
+      overflow: hidden;
+      transition: transform .15s, box-shadow .15s, border-color .15s;
+      display: flex;
+      flex-direction: column;
+    }
+    .lot-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(0,0,0,.4);
+      border-color: rgba(181,123,238,.35);
+    }
+    .lot-img-wrap {
+      position: relative;
+      width: 100%;
+      height: 180px;
+      overflow: hidden;
+      background: #0d0f14;
+    }
+    .lot-img-wrap img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transition: transform .3s;
+    }
+    .lot-card:hover .lot-img-wrap img { transform: scale(1.04); }
+    .lot-img-placeholder {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #1a1d24 0%, #0d0f14 100%);
+      color: rgba(255,255,255,.15);
+    }
+    .lot-badge-wrap {
+      position: absolute;
+      top: 8px; left: 8px;
+      display: flex; gap: 5px;
+    }
+    .lot-badge {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+    .lot-badge--auction { background: #6a1b9a; color: #fff; }
+    .lot-badge--bid     { background: rgba(0,0,0,.7); color: #e0e0e0; border: 1px solid rgba(255,255,255,.15); }
+    .lot-body { padding: 14px; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+    .lot-title {
+      font-size: 14px; font-weight: 600;
+      color: #e6edf3;
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .lot-bid-row {
+      display: flex; align-items: baseline; gap: 8px;
+    }
+    .lot-bid-label { font-size: 10px; color: #7d8590; text-transform: uppercase; letter-spacing: .05em; }
+    .lot-bid-amount {
+      font-size: 22px; font-weight: 700;
+      color: #b57bee;
+      font-family: var(--font-mono, monospace);
+    }
+    .lot-meta { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; }
+    .lot-meta-row {
+      display: flex; gap: 6px; align-items: center;
+      font-size: 12px; color: #7d8590;
+    }
+    .lot-meta-row svg { flex-shrink: 0; opacity: .7; }
+    .lot-meta-val { color: #c9d1d9; font-weight: 500; }
+    .lot-event-tag {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 8px; border-radius: 4px;
+      background: rgba(181,123,238,.1);
+      border: 1px solid rgba(181,123,238,.2);
+      font-size: 11px; color: #c9a5f5;
+      max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .lot-actions {
+      display: flex; gap: 8px;
+      padding: 0 14px 14px;
+    }
+    .lot-btn {
+      flex: 1; padding: 8px 10px;
+      border: none; border-radius: 6px;
+      font-size: 12px; font-weight: 600;
+      cursor: pointer; text-decoration: none;
+      text-align: center; display: inline-flex;
+      align-items: center; justify-content: center; gap: 5px;
+      transition: opacity .15s, transform .1s;
+    }
+    .lot-btn:active { transform: scale(.97); }
+    .lot-btn--bid {
+      background: #6a1b9a; color: #fff;
+    }
+    .lot-btn--bid:hover { background: #7b1fa2; }
+    .lot-btn--event {
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.1);
+      color: #c9d1d9;
+    }
+    .lot-btn--event:hover { background: rgba(255,255,255,.1); }
+
+    /* ── RBA toolbar ──────────────────────────────────────────────────── */
+    .rba-toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 24px;
+      gap: 12px; flex-wrap: wrap;
+    }
+    .rba-toolbar-left { display: flex; align-items: center; gap: 10px; }
+    .rba-toolbar-right { display: flex; align-items: center; gap: 8px; }
+    .rba-title { font-size: 16px; font-weight: 600; color: #e6edf3; }
+    .rba-count { color: #7d8590; font-size: 13px; }
+    .rba-source-tag {
+      font-size: 10px; font-weight: 700;
+      padding: 2px 7px; border-radius: 10px;
+      background: rgba(181,123,238,.15);
+      color: #b57bee;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .btn-rba-check {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 16px;
+      background: linear-gradient(135deg, #6a1b9a, #4a148c);
+      color: #fff; border: none; border-radius: 6px;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: opacity .15s;
+    }
+    .btn-rba-check:hover { opacity: .88; }
+    .btn-rba-check:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ── RBA empty state ─────────────────────────────────────────────── */
+    .rba-empty {
+      text-align: center; padding: 60px 24px;
+      color: #7d8590;
+    }
+    .rba-empty svg { opacity: .25; margin-bottom: 16px; }
+    .rba-empty h3 { color: #c9d1d9; margin-bottom: 8px; }
+    .rba-empty p { font-size: 13px; margin-bottom: 20px; }
+    @keyframes pulse {
+      0%,100% { opacity: 1; } 50% { opacity: .4; }
+    }
+  </style>
 </head>
 <body>
 
@@ -21,7 +250,7 @@
         <div class="brand-logo">YL</div>
         <div class="brand-text">
           <span class="brand-company">YANTRA LIVE</span>
-          <span class="brand-sub">Komatsu Equipment Watcher</span>
+          <span class="brand-sub">Equipment Watcher</span>
         </div>
       </div>
     </div>
@@ -47,7 +276,7 @@
   </header>
 
   <!-- ═══════════════════════ STATS STRIP ═════════════════════════════ -->
-  <section class="stats-strip">
+  <section class="stats-strip" id="komatsu-stats">
     <div class="stat-card">
       <div class="stat-icon stat-icon--blue">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
@@ -86,6 +315,60 @@
     </div>
   </section>
 
+  <!-- ═══════════════════════ RBA STATS STRIP ═════════════════════════ -->
+  <section class="stats-strip rba-stats-strip" id="rba-stats">
+    <div class="stat-card">
+      <div class="stat-icon rba-stat-icon--purple">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+      </div>
+      <div class="stat-body">
+        <div class="stat-value" id="rba-stat-total">—</div>
+        <div class="stat-label">Lots Found</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon stat-icon--orange">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <div class="stat-body">
+        <div class="stat-value" id="rba-stat-events">—</div>
+        <div class="stat-label">Active Events</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon stat-icon--green">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <div class="stat-body">
+        <div class="stat-value" id="rba-stat-checks">—</div>
+        <div class="stat-label">Scans Run</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon rba-stat-icon--pink">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      </div>
+      <div class="stat-body">
+        <div class="stat-value" id="rba-stat-new" style="color:#b57bee">—</div>
+        <div class="stat-label">New (24 hrs)</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════ TAB BAR ══════════════════════════════ -->
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tab-komatsu" onclick="switchTab('komatsu')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Komatsu / TradeEarth
+      <span class="tab-badge" id="tab-komatsu-badge">—</span>
+    </button>
+    <button class="tab-btn rba" id="tab-rba" onclick="switchTab('rba')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+      RB Auction
+      <span class="tab-badge" id="tab-rba-badge">—</span>
+    </button>
+  </div>
+
   <!-- ═══════════════════════ MAIN LAYOUT ═════════════════════════════ -->
   <div class="layout">
 
@@ -122,6 +405,33 @@
         </div>
       </div>
 
+      <!-- RBA Status (shown in sidebar always) -->
+      <div class="sidebar-section">
+        <div class="sidebar-heading">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z"/></svg>
+          RBA Status
+        </div>
+        <div style="padding:6px 0;font-size:12px;color:#7d8590;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <span>Last Scan</span>
+            <span style="color:#c9d1d9" id="rba-sidebar-lastrun">—</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <span>Lots Found</span>
+            <span style="color:#b57bee;font-weight:600" id="rba-sidebar-total">—</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span>Scheduler</span>
+            <span id="rba-sidebar-sched" style="color:#7d8590">—</span>
+          </div>
+        </div>
+        <button class="btn-rba-check" style="width:100%;margin-top:8px;font-size:12px;padding:6px 10px"
+                id="rba-sidebar-check-btn" onclick="runRBACheck()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Scan RB Auction Now
+        </button>
+      </div>
+
       <!-- Recent Activity -->
       <div class="sidebar-section">
         <div class="sidebar-heading">
@@ -140,41 +450,75 @@
     <!-- ───────── MAIN ───────── -->
     <main class="main">
 
-      <!-- Toolbar -->
-      <div class="main-toolbar">
-        <div class="main-title">
-          <h2>Equipment Listings</h2>
-          <span class="listing-count" id="listing-count">Loading…</span>
-        </div>
-        <div class="toolbar-right">
-          <div class="search-box">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="search-input" placeholder="Search listings…" oninput="filterListings()" />
+      <!-- ───── KOMATSU TAB ───── -->
+      <div id="komatsu-section">
+        <!-- Toolbar -->
+        <div class="main-toolbar">
+          <div class="main-title">
+            <h2>Equipment Listings</h2>
+            <span class="listing-count" id="listing-count">Loading…</span>
           </div>
-          <select class="sort-select" id="sort-select" onchange="filterListings()">
-            <option value="newest">Newest First</option>
-            <option value="price-asc">Price ↑</option>
-            <option value="price-desc">Price ↓</option>
-          </select>
+          <div class="toolbar-right">
+            <div class="search-box">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="search-input" placeholder="Search listings…" oninput="filterListings()" />
+            </div>
+            <select class="sort-select" id="sort-select" onchange="filterListings()">
+              <option value="newest">Newest First</option>
+              <option value="price-asc">Price ↑</option>
+              <option value="price-desc">Price ↓</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Listings Grid -->
+        <div class="listings-grid" id="listings-grid">
+          <div class="card skeleton-card"></div>
+          <div class="card skeleton-card"></div>
+          <div class="card skeleton-card"></div>
+        </div>
+
+        <!-- Empty state -->
+        <div class="empty-state" id="empty-state" style="display:none">
+          <div class="empty-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </div>
+          <h3>No listings found yet</h3>
+          <p>The watcher will alert you when your target models appear for sale.</p>
+          <button class="btn btn-primary" onclick="runCheck()">Run Check Now</button>
         </div>
       </div>
 
-      <!-- Listings Grid -->
-      <div class="listings-grid" id="listings-grid">
-        <!-- Skeleton cards shown on load -->
-        <div class="card skeleton-card"></div>
-        <div class="card skeleton-card"></div>
-        <div class="card skeleton-card"></div>
-      </div>
-
-      <!-- Empty state -->
-      <div class="empty-state" id="empty-state" style="display:none">
-        <div class="empty-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <!-- ───── RBA TAB ───── -->
+      <div id="rba-section">
+        <!-- RBA Toolbar -->
+        <div class="rba-toolbar">
+          <div class="rba-toolbar-left">
+            <h2 class="rba-title">Auction Lots</h2>
+            <span class="rba-source-tag">rbauction.com.au</span>
+            <span class="rba-count" id="rba-listing-count">Loading…</span>
+          </div>
+          <div class="rba-toolbar-right">
+            <div class="search-box">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="rba-search-input" placeholder="Search lots…" oninput="filterRBAListings()" />
+            </div>
+            <button class="btn-rba-check" id="rba-check-btn" onclick="runRBACheck()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Scan Now
+            </button>
+          </div>
         </div>
-        <h3>No listings found yet</h3>
-        <p>The watcher will alert you when your target models appear for sale.</p>
-        <button class="btn btn-primary" onclick="runCheck()">Run Check Now</button>
+
+        <!-- RBA Lots Grid -->
+        <div class="listings-grid" id="rba-grid" style="padding: 0 24px 24px;">
+          <div style="grid-column:1/-1;text-align:center;padding:60px 24px;color:#7d8590">
+            <div style="margin-bottom:12px;opacity:.3">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+            </div>
+            <p style="font-size:14px">Click <strong style="color:#b57bee">Scan Now</strong> to search RB Auction for your target models.</p>
+          </div>
+        </div>
       </div>
 
     </main>
@@ -187,12 +531,30 @@
       <h3>Watch History</h3>
       <button class="btn-close" onclick="toggleHistory()">✕</button>
     </div>
+
+    <!-- Komatsu history -->
+    <div style="padding:8px 16px 4px;font-size:11px;font-weight:700;letter-spacing:.05em;color:#4a9eff;text-transform:uppercase;">
+      Komatsu / TradeEarth
+    </div>
     <div class="history-table-wrap">
       <table class="history-table">
         <thead>
           <tr><th>Time</th><th>Models</th><th>Found</th><th>New</th></tr>
         </thead>
         <tbody id="history-body"></tbody>
+      </table>
+    </div>
+
+    <!-- RBA history -->
+    <div style="padding:12px 16px 4px;font-size:11px;font-weight:700;letter-spacing:.05em;color:#b57bee;text-transform:uppercase;border-top:1px solid rgba(255,255,255,.06);margin-top:8px">
+      RB Auction
+    </div>
+    <div class="history-table-wrap">
+      <table class="history-table">
+        <thead>
+          <tr><th>Time</th><th>Models</th><th>Scanned</th><th>New</th></tr>
+        </thead>
+        <tbody id="rba-history-body"></tbody>
       </table>
     </div>
   </aside>
@@ -209,7 +571,6 @@
     </div>
     <div class="modal-body">
       <div class="modal-listing-info" id="modal-listing-info"></div>
-
       <div class="form-grid">
         <div class="form-group form-group--full">
           <label class="form-label">Company Name</label>
@@ -303,5 +664,276 @@
   </div>
 
   <script src="/static/app.js"></script>
+
+  <!-- ═══════════════════════ RBA JAVASCRIPT ════════════════════════ -->
+  <script>
+  // ── State ────────────────────────────────────────────────────────────────
+  let _rbaAllLots = [];
+  let _activeTab  = 'komatsu';
+
+  // ── Tab switching ────────────────────────────────────────────────────────
+  function switchTab(tab) {
+    _activeTab = tab;
+    const komatsuSection = document.getElementById('komatsu-section');
+    const rbaSection     = document.getElementById('rba-section');
+    const komatsuStats   = document.getElementById('komatsu-stats');
+    const rbaStats       = document.getElementById('rba-stats');
+    const tabKomatsu     = document.getElementById('tab-komatsu');
+    const tabRBA         = document.getElementById('tab-rba');
+
+    if (tab === 'komatsu') {
+      komatsuSection.classList.remove('hidden');
+      rbaSection.classList.remove('visible');
+      komatsuStats.style.display = '';
+      rbaStats.classList.remove('visible');
+      tabKomatsu.classList.add('active');
+      tabRBA.classList.remove('active');
+    } else {
+      komatsuSection.classList.add('hidden');
+      rbaSection.classList.add('visible');
+      komatsuStats.style.display = 'none';
+      rbaStats.classList.add('visible');
+      tabKomatsu.classList.remove('active');
+      tabRBA.classList.add('active');
+      loadRBAListings();
+    }
+  }
+
+  // ── Load RBA status ──────────────────────────────────────────────────────
+  async function loadRBAStatus() {
+    try {
+      const res  = await fetch('/api/rba/status');
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Sidebar
+      document.getElementById('rba-sidebar-lastrun').textContent =
+        data.last_run ? new Date(data.last_run).toLocaleTimeString() : 'Never';
+      document.getElementById('rba-sidebar-total').textContent  = data.total_lots ?? '—';
+      document.getElementById('rba-sidebar-sched').textContent  =
+        data.scheduler_running ? '✅ Running' : '⛔ Stopped';
+      document.getElementById('rba-sidebar-sched').style.color =
+        data.scheduler_running ? '#3fb950' : '#f85149';
+
+      // Stats strip
+      document.getElementById('rba-stat-total').textContent  = data.total_lots ?? '—';
+      document.getElementById('rba-stat-checks').textContent = data.total_checks ?? '—';
+      document.getElementById('rba-stat-new').textContent    = data.new_24h ?? '—';
+
+      // Unique auction events from recent runs
+      const eventsCount = data.recent_runs
+        ? new Set(data.recent_runs.map(r => r.models).filter(Boolean)).size
+        : '—';
+      document.getElementById('rba-stat-events').textContent = eventsCount || '—';
+
+      // Tab badge
+      document.getElementById('tab-rba-badge').textContent = data.total_lots ?? '0';
+
+      // Disable check button if in progress
+      const btns = [
+        document.getElementById('rba-check-btn'),
+        document.getElementById('rba-sidebar-check-btn'),
+      ];
+      btns.forEach(b => {
+        if (b) b.disabled = data.check_in_progress;
+      });
+
+      // RBA history
+      if (data.recent_runs) {
+        const tbody = document.getElementById('rba-history-body');
+        if (tbody) {
+          tbody.innerHTML = data.recent_runs.map(r =>
+            `<tr>
+              <td>${new Date(r.timestamp).toLocaleString()}</td>
+              <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;">${r.models||'—'}</td>
+              <td>${r.total_found??0}</td>
+              <td style="color:${r.new_found>0?'#3fb950':'#7d8590'}">${r.new_found??0}</td>
+            </tr>`
+          ).join('');
+        }
+      }
+    } catch(e) {
+      console.error('RBA status error:', e);
+    }
+  }
+
+  // ── Load RBA listings ────────────────────────────────────────────────────
+  async function loadRBAListings() {
+    try {
+      const res  = await fetch('/api/rba/listings?limit=200');
+      if (!res.ok) return;
+      const data = await res.json();
+      _rbaAllLots = (data.listings || []).map(r => r.data || r);
+
+      const count = document.getElementById('rba-listing-count');
+      if (count) count.textContent = `${_rbaAllLots.length} lot(s) found`;
+
+      filterRBAListings();
+    } catch(e) {
+      console.error('RBA listings error:', e);
+    }
+  }
+
+  // ── Filter / render RBA lots ─────────────────────────────────────────────
+  function filterRBAListings() {
+    const q    = (document.getElementById('rba-search-input')?.value || '').toLowerCase();
+    const grid = document.getElementById('rba-grid');
+    if (!grid) return;
+
+    const filtered = q
+      ? _rbaAllLots.filter(l =>
+          [l.title, l.auction_event, l.location, l.lot_number, l.year, l.current_bid]
+            .join(' ').toLowerCase().includes(q)
+        )
+      : _rbaAllLots;
+
+    if (!filtered.length) {
+      grid.innerHTML = `
+        <div style="grid-column:1/-1" class="rba-empty">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z"/>
+          </svg>
+          <h3>${_rbaAllLots.length ? 'No lots match your search' : 'No lots found yet'}</h3>
+          <p>${_rbaAllLots.length ? 'Try a different search term.' : 'Click Scan Now to search RB Auction for your target models.'}</p>
+          ${!_rbaAllLots.length ? '<button class="btn-rba-check" onclick="runRBACheck()">Scan Now</button>' : ''}
+        </div>`;
+      return;
+    }
+
+    grid.innerHTML = filtered.map(lot => renderLotCard(lot)).join('');
+  }
+
+  // ── Render a single lot card ─────────────────────────────────────────────
+  function renderLotCard(lot) {
+    const imgUrl      = lot.image_url || '';
+    const title       = lot.title     || 'Unknown Equipment';
+    const bid         = lot.current_bid || lot.price || 'N/A';
+    const lotNum      = lot.lot_number  || '';
+    const year        = lot.year        || '';
+    const hours       = lot.hours       || '';
+    const location    = lot.location    || '';
+    const auctionEvt  = lot.auction_event || 'RB Auction';
+    const detailUrl   = lot.detail_url  || '#';
+    const auctionUrl  = lot.auction_url || detailUrl;
+
+    const imgBlock = imgUrl
+      ? `<img src="${escHtml(imgUrl)}" alt="${escHtml(title)}" loading="lazy"
+             onerror="this.parentElement.innerHTML='<div class=\\'lot-img-placeholder\\'><svg width=48 height=48 viewBox=\\'0 0 24 24\\' fill=none stroke=currentColor stroke-width=1.5><path d=\\'M14 9V5a3 3 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z\\'/></svg></div>'">`
+      : `<div class="lot-img-placeholder">
+           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+             <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z"/>
+           </svg>
+         </div>`;
+
+    return `
+    <div class="lot-card">
+      <div class="lot-img-wrap">
+        ${imgBlock}
+        <div class="lot-badge-wrap">
+          <span class="lot-badge lot-badge--auction">Auction</span>
+          ${lotNum ? `<span class="lot-badge lot-badge--bid">Lot #${escHtml(lotNum)}</span>` : ''}
+        </div>
+      </div>
+      <div class="lot-body">
+        <div class="lot-title">${escHtml(title)}</div>
+        <div class="lot-bid-row">
+          <span class="lot-bid-label">Current Bid</span>
+          <span class="lot-bid-amount">${escHtml(bid)}</span>
+        </div>
+        <div class="lot-meta">
+          ${year ? `<div class="lot-meta-row">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span class="lot-meta-val">${escHtml(year)}</span>
+          </div>` : ''}
+          ${hours ? `<div class="lot-meta-row">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span class="lot-meta-val">${escHtml(hours)}</span>
+          </div>` : ''}
+          ${location ? `<div class="lot-meta-row">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span class="lot-meta-val">${escHtml(location)}</span>
+          </div>` : ''}
+          <div class="lot-meta-row" style="margin-top:4px;">
+            <span class="lot-event-tag">🏛️ ${escHtml(auctionEvt)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="lot-actions">
+        <a href="${escHtml(detailUrl)}" target="_blank" rel="noopener" class="lot-btn lot-btn--bid">
+          🔨 Bid Now
+        </a>
+        <a href="${escHtml(auctionUrl)}" target="_blank" rel="noopener" class="lot-btn lot-btn--event">
+          Event →
+        </a>
+      </div>
+    </div>`;
+  }
+
+  // ── Run RBA check ────────────────────────────────────────────────────────
+  async function runRBACheck() {
+    const btns = [
+      document.getElementById('rba-check-btn'),
+      document.getElementById('rba-sidebar-check-btn'),
+    ];
+    btns.forEach(b => { if (b) { b.disabled = true; b.textContent = 'Scanning…'; } });
+
+    try {
+      const res  = await fetch('/api/rba/check', { method: 'POST' });
+      const data = await res.json();
+      showToast(data.started ? '🔨 RBA scan started! This may take a minute…' : data.message, 'info');
+      if (data.started) {
+        // Poll for completion
+        setTimeout(() => pollRBAStatus(), 5000);
+      }
+    } catch(e) {
+      showToast('Failed to start RBA scan: ' + e.message, 'error');
+    } finally {
+      setTimeout(() => {
+        btns.forEach(b => {
+          if (b) { b.disabled = false; b.textContent = b.id.includes('sidebar') ? 'Scan RB Auction Now' : 'Scan Now'; }
+        });
+      }, 8000);
+    }
+  }
+
+  function pollRBAStatus() {
+    loadRBAStatus();
+    if (_activeTab === 'rba') loadRBAListings();
+    // Poll 3 more times with 10s interval to catch the result
+    let polls = 0;
+    const iv = setInterval(() => {
+      loadRBAStatus();
+      if (_activeTab === 'rba') loadRBAListings();
+      if (++polls >= 3) clearInterval(iv);
+    }, 10000);
+  }
+
+  // ── Helper ───────────────────────────────────────────────────────────────
+  function escHtml(str) {
+    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function showToast(msg, type) {
+    // Re-use the existing toast function if available, else console.log
+    if (typeof window.toast === 'function') {
+      window.toast(msg, type);
+    } else {
+      const c = document.getElementById('toast-container');
+      if (!c) return;
+      const el = document.createElement('div');
+      el.className = 'toast toast--' + (type || 'info');
+      el.textContent = msg;
+      c.appendChild(el);
+      setTimeout(() => el.remove(), 4500);
+    }
+  }
+
+  // ── Auto-load on page ready ──────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    loadRBAStatus();
+    // Refresh RBA status every 30 seconds alongside existing polling
+    setInterval(loadRBAStatus, 30000);
+  });
+  </script>
 </body>
 </html>
