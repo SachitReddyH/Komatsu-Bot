@@ -1,0 +1,30 @@
+targets:
+- model: WA500_8
+- model: ECR305CL
+- model: HM400-5
+- model: WB97R-8
+- model: ZT44
+- model: GD655_7
+- model: PC350LC-8
+- model: PC88MR-8
+watcher:
+  interval_minutes: 60
+  base_search_url: https://iframe.tradeearthmovers.com.au/externalsearch/code-dd74cd3a-7423-41a3-8227-e1a92b01925a
+  base_detail_url: https://iframe.tradeearthmovers.com.au
+  komatsu_page: https://www.komatsu.com.au/equipment/used-equipment
+notifications:
+  email:
+    enabled: true
+    smtp_server: smtp.gmail.com
+    smtp_port: 587
+  whatsapp:
+    enabled: false
+    # Setup: each recipient sends "I allow callmebot to send me messages"
+    # to +34 644 60 32 01 on WhatsApp and receives their personal apikey.
+    # Then add their phone (international format) + apikey below.
+    # Set enabled: true once at least one recipient is configured.
+    recipients:
+      - phone: "+91XXXXXXXXXX"
+        apikey: "your_callmebot_apikey"
+enquiry:
+  company_name: YANTRA LIVE

@@ -1,0 +1,36 @@
+# ── Credentials & secrets ──────────────────────────────────────────
+.env
+*.env
+
+# ── Database (local data, not for repo) ────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Logs ───────────────────────────────────────────────────────────
+*.log
+
+# ── Python cache ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.pytest_cache/
+
+# ── Virtual environments ────────────────────────────────────────────
+venv/
+.venv/
+env/
+
+# ── OS junk ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+
+# ── Playwright browsers (large binaries) ───────────────────────────
+playwright-browsers/
+.claude/
